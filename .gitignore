@@ -1,0 +1,98 @@
+# ================================
+# Python
+# ================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# ================================
+# Jupyter Notebook
+# ================================
+
+.ipynb_checkpoints/
+
+# ================================
+# VS Code
+# ================================
+
+.vscode/
+*.code-workspace
+
+# ================================
+# Dataset
+# ================================
+
+# Raw dataset
+data/raw/
+
+# Processed dataset
+data/processed/
+
+# ================================
+# YOLO / Ultralytics
+# ================================
+
+runs/
+weights/
+
+# Model weights
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# ================================
+# Generated files
+# ================================
+
+data/visualizations/
+outputs/
+results/
+
+# ================================
+# Python / ML cache
+# ================================
+
+*.pkl
+*.pickle
+*.joblib
+
+# ================================
+# Logs
+# ================================
+
+*.log
+
+# ================================
+# OS generated files
+# ================================
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+
+# ================================
+# Environment / Secrets
+# ================================
+
+.env
+.env.*
+!.env.example
+
+# ================================
+# Temporary files
+# ================================
+
+*.tmp
+*.temp
+*.bak
