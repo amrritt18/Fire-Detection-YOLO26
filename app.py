@@ -1,33 +1,11 @@
-import os
 import time
-import smtplib
-from email.message import EmailMessage
 
 import streamlit as st
-from dotenv import load_dotenv
-from ultralytics import YOLO
 from streamlit_webrtc import VideoProcessorBase, webrtc_streamer
 
-
-# ============================================================
-# LOAD ENVIRONMENT VARIABLES
-# ============================================================
-
-load_dotenv()
-
-EMAIL_SENDER = os.getenv("EMAIL_SENDER")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
-
-
-# ============================================================
-# CONFIGURATION
-# ============================================================
-
-MODEL_PATH = "models/best.pt"
-
-# Minimum time between two fire alert emails
-ALERT_COOLDOWN = 60
+from src.config import DEFAULT_CONFIDENCE, MODEL_PATH
+from src.detector import FireDetector
+from src.model import load_model
 
 
 # ============================================================
@@ -49,39 +27,44 @@ st.markdown(
     """
     <style>
 
-    .main-title {
-        text-align: center;
-        font-size: 2.4rem;
+    .main {
+        padding-top: 1rem;
+    }
+
+    .title {
+        font-size: 2.5rem;
         font-weight: 700;
+        text-align: center;
         margin-bottom: 0.2rem;
     }
 
     .subtitle {
         text-align: center;
         color: #777;
-        margin-bottom: 1.5rem;
+        margin-bottom: 2rem;
     }
 
     .status-box {
-        padding: 20px;
-        border-radius: 12px;
-        text-align: center;
+        padding: 15px;
+        border-radius: 10px;
         margin-bottom: 15px;
+        text-align: center;
+        font-weight: bold;
     }
 
-    .fire-status {
-        background-color: #ffdddd;
-        border: 2px solid #ff4444;
+    .safe {
+        background-color: #d4edda;
+        color: #155724;
     }
 
-    .smoke-status {
-        background-color: #fff1cc;
-        border: 2px solid #ff9900;
+    .danger {
+        background-color: #f8d7da;
+        color: #721c24;
     }
 
-    .safe-status {
-        background-color: #ddf5df;
-        border: 2px solid #32a852;
+    .warning {
+        background-color: #fff3cd;
+        color: #856404;
     }
 
     </style>
@@ -95,160 +78,75 @@ st.markdown(
 # ============================================================
 
 st.markdown(
-    '<div class="main-title">🔥 Real-Time Fire Detection System</div>',
+    '<div class="title">🔥 Real-Time Fire Detection System</div>',
     unsafe_allow_html=True,
 )
 
 st.markdown(
     '<div class="subtitle">'
-    "YOLO26-based Fire, Smoke and Other Object Detection"
-    "</div>",
+    'YOLO26-based real-time fire, smoke and object detection'
+    '</div>',
     unsafe_allow_html=True,
 )
 
 
 # ============================================================
-# LOAD YOLO MODEL
+# MODEL LOADING
 # ============================================================
 
 @st.cache_resource
-def load_model():
-    return YOLO(MODEL_PATH)
+def get_model():
+    return load_model()
 
 
-model = load_model()
+try:
+    model = get_model()
+
+except Exception as error:
+    st.error(f"Failed to load model: {error}")
+    st.stop()
 
 
 # ============================================================
 # SIDEBAR
 # ============================================================
 
-st.sidebar.header("⚙️ Detection Settings")
+with st.sidebar:
 
-confidence_threshold = st.sidebar.slider(
-    "Confidence Threshold",
-    min_value=0.05,
-    max_value=1.00,
-    value=0.25,
-    step=0.05,
-)
+    st.header("⚙️ Detection Settings")
 
-st.sidebar.markdown("---")
-
-st.sidebar.subheader("Model Information")
-
-st.sidebar.write("**Model:** YOLO26n")
-st.sidebar.write("**Classes:** Fire / Other / Smoke")
-st.sidebar.write("**Input:** Webcam")
-st.sidebar.write("**Weights:** best.pt")
-
-st.sidebar.markdown("---")
-
-st.sidebar.subheader("📧 Email Alerts")
-
-if EMAIL_SENDER and EMAIL_RECEIVER:
-
-    st.sidebar.success("Email alerts configured")
-
-    st.sidebar.write(
-        f"Recipient: `{EMAIL_RECEIVER}`"
+    confidence = st.slider(
+        "Confidence Threshold",
+        min_value=0.05,
+        max_value=0.95,
+        value=DEFAULT_CONFIDENCE,
+        step=0.05,
     )
 
-    st.sidebar.write(
-        f"Cooldown: `{ALERT_COOLDOWN} seconds`"
+    st.divider()
+
+    st.subheader("Model Information")
+
+    st.write(f"**Model:** YOLO26n")
+    st.write(f"**Model path:** `{MODEL_PATH}`")
+
+    st.write("**Classes:**")
+
+    st.write("🔥 Fire")
+    st.write("💨 Smoke")
+    st.write("📦 Other")
+
+    st.divider()
+
+    st.info(
+        """
+        **Safety Notice**
+
+        This system is a computer-vision prototype.
+        It should not be treated as a certified
+        fire-safety alarm system.
+        """
     )
-
-else:
-
-    st.sidebar.warning(
-        "Email credentials are not configured."
-    )
-
-
-st.sidebar.markdown("---")
-
-st.sidebar.info(
-    "This system is a computer-vision prototype "
-    "and should not be used as a certified fire-safety alarm."
-)
-
-
-# ============================================================
-# EMAIL FUNCTION
-# ============================================================
-
-def send_fire_alert(confidence):
-    """
-    Send an email when fire is detected.
-    """
-
-    if not EMAIL_SENDER:
-        print("EMAIL_SENDER is not configured.")
-        return False
-
-    if not EMAIL_PASSWORD:
-        print("EMAIL_PASSWORD is not configured.")
-        return False
-
-    if not EMAIL_RECEIVER:
-        print("EMAIL_RECEIVER is not configured.")
-        return False
-
-    try:
-
-        message = EmailMessage()
-
-        message["Subject"] = (
-            "🔥 FIRE DETECTED - Fire Detection System"
-        )
-
-        message["From"] = EMAIL_SENDER
-        message["To"] = EMAIL_RECEIVER
-
-        message.set_content(
-            f"""
-Fire Detection Alert
-
-The YOLO26 fire detection system has detected FIRE.
-
-Detection Details
------------------
-Class: FIRE
-Confidence: {confidence * 100:.2f}%
-
-Please check the camera immediately.
-
-This is an automated alert generated by the
-Fire Detection System.
-"""
-        )
-
-        with smtplib.SMTP_SSL(
-            "smtp.gmail.com",
-            465
-        ) as server:
-
-            server.login(
-                EMAIL_SENDER,
-                EMAIL_PASSWORD
-            )
-
-            server.send_message(message)
-
-        print(
-            f"Fire alert email sent successfully "
-            f"to {EMAIL_RECEIVER}"
-        )
-
-        return True
-
-    except Exception as error:
-
-        print(
-            f"Failed to send fire alert email: {error}"
-        )
-
-        return False
 
 
 # ============================================================
@@ -259,219 +157,17 @@ class VideoProcessor(VideoProcessorBase):
 
     def __init__(self):
 
-        self.model = model
-
-        # Detection settings
-        self.confidence = confidence_threshold
-
-        # FPS
-        self.last_time = time.time()
-        self.fps = 0.0
-
-        # Detection counts
-        self.fire_count = 0
-        self.smoke_count = 0
-        self.other_count = 0
-
-        # Highest confidence detection
-        self.max_confidence = 0.0
-        self.detected_class = None
-
-        # Email alert state
-        self.last_alert_time = 0
-        self.fire_alert_sent = False
-
-        # Email status
-        self.email_status = "No alert sent"
-
-
-    # ========================================================
-    # PROCESS EACH VIDEO FRAME
-    # ========================================================
+        self.detector = FireDetector(
+            model=model,
+            confidence=confidence,
+        )
 
     def recv(self, frame):
 
-        # ----------------------------------------------------
-        # Convert WebRTC frame to OpenCV
-        # ----------------------------------------------------
+        img = frame.to_ndarray(format="bgr24")
 
-        img = frame.to_ndarray(
-            format="bgr24"
-        )
-
-        # ----------------------------------------------------
-        # YOLO inference
-        # ----------------------------------------------------
-
-        results = self.model.predict(
-            source=img,
-            conf=self.confidence,
-            verbose=False,
-        )
-
-        result = results[0]
-
-        # ----------------------------------------------------
-        # Reset detection values
-        # ----------------------------------------------------
-
-        self.fire_count = 0
-        self.smoke_count = 0
-        self.other_count = 0
-
-        self.max_confidence = 0.0
-        self.detected_class = None
-
-        # ----------------------------------------------------
-        # Process detections
-        # ----------------------------------------------------
-
-        if result.boxes is not None:
-
-            for box in result.boxes:
-
-                class_id = int(
-                    box.cls[0]
-                )
-
-                confidence = float(
-                    box.conf[0]
-                )
-
-                class_name = (
-                    self.model.names[class_id]
-                    .lower()
-                )
-
-                # --------------------------------------------
-                # Find highest confidence detection
-                # --------------------------------------------
-
-                if confidence > self.max_confidence:
-
-                    self.max_confidence = confidence
-
-                    self.detected_class = (
-                        class_name
-                    )
-
-                # --------------------------------------------
-                # Count classes
-                # --------------------------------------------
-
-                if class_name == "fire":
-
-                    self.fire_count += 1
-
-                elif class_name == "smoke":
-
-                    self.smoke_count += 1
-
-                elif class_name == "other":
-
-                    self.other_count += 1
-
-        # ====================================================
-        # EMAIL ALERT LOGIC
-        # ====================================================
-
-        current_time = time.time()
-
-        # Fire detected
-        if self.fire_count > 0:
-
-            # Check whether enough time has passed
-            cooldown_finished = (
-                current_time - self.last_alert_time
-                >= ALERT_COOLDOWN
-            )
-
-            # Send only if an alert has not already
-            # been sent for the current fire event
-            if (
-                not self.fire_alert_sent
-                and cooldown_finished
-            ):
-
-                email_sent = send_fire_alert(
-                    self.max_confidence
-                )
-
-                if email_sent:
-
-                    self.fire_alert_sent = True
-
-                    self.last_alert_time = (
-                        current_time
-                    )
-
-                    self.email_status = (
-                        "📧 Fire alert email sent"
-                    )
-
-                else:
-
-                    self.email_status = (
-                        "⚠️ Email failed"
-                    )
-
-        # ----------------------------------------------------
-        # No fire detected
-        # ----------------------------------------------------
-
-        else:
-
-            # Reset the event state.
-            #
-            # The next new fire detection can
-            # generate another email.
-
-            self.fire_alert_sent = False
-
-        # ====================================================
-        # DRAW YOLO RESULTS
-        # ====================================================
-
-        annotated_frame = result.plot()
-
-        # ====================================================
-        # FPS CALCULATION
-        # ====================================================
-
-        current_frame_time = time.time()
-
-        elapsed = (
-            current_frame_time
-            - self.last_time
-        )
-
-        if elapsed > 0:
-
-            self.fps = 1.0 / elapsed
-
-        self.last_time = (
-            current_frame_time
-        )
-
-        # ====================================================
-        # ADD FPS TO VIDEO
-        # ====================================================
-
-        import cv2
-
-        cv2.putText(
-            annotated_frame,
-            f"FPS: {self.fps:.1f}",
-            (20, 40),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (255, 255, 255),
-            2,
-        )
-
-        # ====================================================
-        # RETURN FRAME
-        # ====================================================
+        # Process frame through detector
+        annotated_frame = self.detector.process_frame(img)
 
         return frame.from_ndarray(
             annotated_frame,
@@ -480,15 +176,10 @@ class VideoProcessor(VideoProcessorBase):
 
 
 # ============================================================
-# MAIN DASHBOARD
+# DASHBOARD LAYOUT
 # ============================================================
 
-st.markdown("### 📹 Live Camera")
-
-
-camera_col, status_col = st.columns(
-    [2.2, 1]
-)
+camera_col, status_col = st.columns([2.2, 1])
 
 
 # ============================================================
@@ -497,16 +188,15 @@ camera_col, status_col = st.columns(
 
 with camera_col:
 
+    st.subheader("📷 Live Camera")
+
     webrtc_ctx = webrtc_streamer(
         key="fire-detection",
-
         video_processor_factory=VideoProcessor,
-
         media_stream_constraints={
             "video": True,
             "audio": False,
         },
-
         async_processing=True,
     )
 
@@ -517,43 +207,35 @@ with camera_col:
 
 with status_col:
 
-    st.markdown(
-        "### 🚨 Detection Status"
-    )
+    st.subheader("📊 Detection Status")
 
     status_placeholder = st.empty()
 
-    st.markdown(
-        "### 📊 Detection Summary"
-    )
+    st.divider()
+
+    st.markdown("### Detection Counts")
 
     fire_metric = st.empty()
-
     smoke_metric = st.empty()
-
     other_metric = st.empty()
 
-    st.markdown(
-        "### 🎯 Highest Confidence"
-    )
+    st.divider()
+
+    st.markdown("### Detection Details")
 
     confidence_placeholder = st.empty()
-
-    st.markdown(
-        "### ⚡ Performance"
-    )
-
+    class_placeholder = st.empty()
     fps_placeholder = st.empty()
 
-    st.markdown(
-        "### 📧 Email Alert"
-    )
+    st.divider()
+
+    st.markdown("### Alert Status")
 
     email_placeholder = st.empty()
 
 
 # ============================================================
-# UPDATE DASHBOARD METRICS
+# DASHBOARD UPDATE LOOP
 # ============================================================
 
 if webrtc_ctx.video_processor:
@@ -562,123 +244,119 @@ if webrtc_ctx.video_processor:
 
     while webrtc_ctx.state.playing:
 
-        # ====================================================
-        # DETECTION STATUS
-        # ====================================================
+        try:
 
-        if processor.fire_count > 0:
+            status = processor.detector.get_status()
 
-            status_placeholder.markdown(
-                f"""
-                <div class="status-box fire-status">
+            fire_count = status["fire_count"]
+            smoke_count = status["smoke_count"]
+            other_count = status["other_count"]
 
-                    <h2>🔥 FIRE DETECTED</h2>
+            max_confidence = status["max_confidence"]
+            detected_class = status["detected_class"]
+            fps = status["fps"]
+            alert_status = status["alert_status"]
 
-                    <p>
-                    Fire objects:
-                    <strong>
-                    {processor.fire_count}
-                    </strong>
-                    </p>
 
-                </div>
-                """,
-                unsafe_allow_html=True,
+            # ------------------------------------------------
+            # Overall status
+            # ------------------------------------------------
+
+            if fire_count > 0:
+
+                status_placeholder.markdown(
+                    """
+                    <div class="status-box danger">
+                        🔥 FIRE DETECTED
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            elif smoke_count > 0:
+
+                status_placeholder.markdown(
+                    """
+                    <div class="status-box warning">
+                        💨 SMOKE DETECTED
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            else:
+
+                status_placeholder.markdown(
+                    """
+                    <div class="status-box safe">
+                        ✅ NO FIRE DETECTED
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+
+            # ------------------------------------------------
+            # Detection counts
+            # ------------------------------------------------
+
+            fire_metric.metric(
+                "🔥 Fire",
+                fire_count,
             )
 
-        elif processor.smoke_count > 0:
-
-            status_placeholder.markdown(
-                f"""
-                <div class="status-box smoke-status">
-
-                    <h2>💨 SMOKE DETECTED</h2>
-
-                    <p>
-                    Smoke objects:
-                    <strong>
-                    {processor.smoke_count}
-                    </strong>
-                    </p>
-
-                </div>
-                """,
-                unsafe_allow_html=True,
+            smoke_metric.metric(
+                "💨 Smoke",
+                smoke_count,
             )
 
-        else:
-
-            status_placeholder.markdown(
-                """
-                <div class="status-box safe-status">
-
-                    <h2>✓ NO FIRE DETECTED</h2>
-
-                    <p>
-                    No fire or smoke detected
-                    </p>
-
-                </div>
-                """,
-                unsafe_allow_html=True,
+            other_metric.metric(
+                "📦 Other",
+                other_count,
             )
 
-        # ====================================================
-        # DETECTION COUNTS
-        # ====================================================
 
-        fire_metric.metric(
-            "🔥 Fire",
-            processor.fire_count,
-        )
-
-        smoke_metric.metric(
-            "💨 Smoke",
-            processor.smoke_count,
-        )
-
-        other_metric.metric(
-            "📦 Other",
-            processor.other_count,
-        )
-
-        # ====================================================
-        # HIGHEST CONFIDENCE
-        # ====================================================
-
-        if processor.detected_class:
+            # ------------------------------------------------
+            # Detection details
+            # ------------------------------------------------
 
             confidence_placeholder.metric(
-                processor.detected_class.upper(),
-                f"{processor.max_confidence * 100:.1f}%",
+                "Highest Confidence",
+                f"{max_confidence * 100:.1f}%",
             )
 
-        else:
-
-            confidence_placeholder.metric(
-                "Detection",
-                "None",
+            class_placeholder.metric(
+                "Detected Class",
+                detected_class.upper(),
             )
 
-        # ====================================================
-        # FPS
-        # ====================================================
+            fps_placeholder.metric(
+                "FPS",
+                f"{fps:.1f}",
+            )
 
-        fps_placeholder.metric(
-            "FPS",
-            f"{processor.fps:.1f}",
-        )
 
-        # ====================================================
-        # EMAIL STATUS
-        # ====================================================
+            # ------------------------------------------------
+            # Email status
+            # ------------------------------------------------
 
-        email_placeholder.write(
-            processor.email_status
-        )
+            email_placeholder.info(
+                alert_status
+            )
 
-        # ====================================================
-        # UPDATE RATE
-        # ====================================================
 
-        time.sleep(0.1)
+            time.sleep(0.1)
+
+        except Exception:
+            break
+
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.divider()
+
+st.caption(
+    "Fire Detection System • YOLO26n • Streamlit • WebRTC"
+)
