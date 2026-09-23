@@ -3,6 +3,7 @@ import time
 import streamlit as st
 from streamlit_webrtc import VideoProcessorBase, webrtc_streamer
 
+from src.alert_history import get_alert_history
 from src.config import DEFAULT_CONFIDENCE, MODEL_PATH
 from src.detector import FireDetector
 from src.model import load_model
@@ -84,8 +85,8 @@ st.markdown(
 
 st.markdown(
     '<div class="subtitle">'
-    'YOLO26-based real-time fire, smoke and object detection'
-    '</div>',
+    "YOLO26-based real-time fire, smoke and object detection"
+    "</div>",
     unsafe_allow_html=True,
 )
 
@@ -127,7 +128,7 @@ with st.sidebar:
 
     st.subheader("Model Information")
 
-    st.write(f"**Model:** YOLO26n")
+    st.write("**Model:** YOLO26n")
     st.write(f"**Model path:** `{MODEL_PATH}`")
 
     st.write("**Classes:**")
@@ -164,10 +165,14 @@ class VideoProcessor(VideoProcessorBase):
 
     def recv(self, frame):
 
-        img = frame.to_ndarray(format="bgr24")
+        img = frame.to_ndarray(
+            format="bgr24"
+        )
 
         # Process frame through detector
-        annotated_frame = self.detector.process_frame(img)
+        annotated_frame = (
+            self.detector.process_frame(img)
+        )
 
         return frame.from_ndarray(
             annotated_frame,
@@ -179,7 +184,9 @@ class VideoProcessor(VideoProcessorBase):
 # DASHBOARD LAYOUT
 # ============================================================
 
-camera_col, status_col = st.columns([2.2, 1])
+camera_col, status_col = st.columns(
+    [2.2, 1]
+)
 
 
 # ============================================================
@@ -232,6 +239,17 @@ with status_col:
     st.markdown("### Alert Status")
 
     email_placeholder = st.empty()
+
+
+# ============================================================
+# ALERT HISTORY
+# ============================================================
+
+st.divider()
+
+st.subheader("🚨 Alert History")
+
+history_placeholder = st.empty()
 
 
 # ============================================================
@@ -343,6 +361,29 @@ if webrtc_ctx.video_processor:
             email_placeholder.info(
                 alert_status
             )
+
+
+            # ------------------------------------------------
+            # Alert history
+            # ------------------------------------------------
+
+            history = get_alert_history(
+                limit=10
+            )
+
+            if history:
+
+                history_placeholder.dataframe(
+                    history,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            else:
+
+                history_placeholder.info(
+                    "No fire alerts recorded yet."
+                )
 
 
             time.sleep(0.1)
